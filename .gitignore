@@ -1,0 +1,13 @@
+# Runtime state (never checked in)
+.swamp/
+.swamp-sources.yaml
+
+# Local IDE
+.vscode/
+.idea/
+
+# OS scratch
+.DS_Store
+
+# Test artefacts
+/coverage/

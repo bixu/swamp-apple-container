@@ -1,0 +1,95 @@
+name: CI
+
+permissions:
+  contents: read
+  pull-requests: write
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  # Sanity check the publish credentials so we notice a bad token before a
+  # publish PR merges.
+  verify-publish-auth:
+    runs-on: ubuntu-latest
+    env:
+      SWAMP_ACCESS_TOKEN: ${{ secrets.SWAMP_ACCESS_TOKEN }}
+    steps:
+      - name: Install Homebrew
+        uses: Homebrew/actions/setup-homebrew@main
+
+      - name: Install swamp
+        run: brew install systeminit/tap/swamp
+
+      - name: Write swamp auth file
+        run: |
+          mkdir -p ~/.config/swamp
+          cat > ~/.config/swamp/auth.json <<EOF
+          {
+            "serverUrl": "https://swamp.club",
+            "apiKey": "${SWAMP_ACCESS_TOKEN}",
+            "apiKeyId": "ci",
+            "username": "bixu"
+          }
+          EOF
+
+      - name: Verify swamp auth
+        timeout-minutes: 2
+        run: swamp auth whoami --json
+
+  # Pure-helper unit tests. Deno on ubuntu-latest is enough — the tests don't
+  # touch the container CLI. This gate blocks any driver change that breaks the
+  # flag-translation contract.
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@e95548e56dfa95d4e1a28d6f422fafe75c4c26fb # v2.0.3
+        with:
+          deno-version: v2.x
+
+      - name: deno fmt --check
+        run: deno fmt --check extensions/
+
+      - name: deno lint
+        run: deno lint extensions/
+
+      - name: deno test (unit)
+        run: deno test --allow-read --allow-write --allow-run --allow-env extensions/drivers/
+
+  # macOS smoke test: actually runs `container run` end-to-end. Gated on the
+  # `SMOKE_MACOS` repo variable so forks / PR runs from external contributors
+  # can skip it — the self-hosted runner has to have the `container` CLI
+  # installed. Setting a repo variable `SMOKE_MACOS=1` opts the pipeline in.
+  smoke-macos:
+    if: ${{ vars.SMOKE_MACOS == '1' }}
+    runs-on: [self-hosted, macOS, arm64]
+    needs: unit-tests
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@e95548e56dfa95d4e1a28d6f422fafe75c4c26fb # v2.0.3
+        with:
+          deno-version: v2.x
+
+      - name: Verify container CLI is present
+        run: |
+          container --version
+          container images pull docker.io/library/alpine:latest
+
+      - name: deno test (macOS smoke)
+        env:
+          SWAMP_APPLE_CONTAINER_SMOKE: "1"
+        run: deno test --allow-all extensions/drivers/apple_container_test.ts

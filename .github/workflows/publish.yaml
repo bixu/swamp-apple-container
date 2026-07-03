@@ -1,0 +1,208 @@
+name: Publish
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Supersede in-flight beta publishes for the same PR when new commits land,
+# but never cancel a stable publish on main (each merge must publish).
+concurrency:
+  group: publish-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      SWAMP_ACCESS_TOKEN: ${{ secrets.SWAMP_ACCESS_TOKEN }}
+      # Beta on PRs, stable on merge to main. Diff against the PR base or the
+      # previous commit accordingly so we only republish extensions that
+      # actually changed.
+      CHANNEL: ${{ github.event_name == 'pull_request' && 'beta' || 'stable' }}
+      DIFF_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || 'HEAD~1' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          # Full history so a PR can diff against its base commit, and main can
+          # diff against the previous commit.
+          fetch-depth: 0
+
+      - name: Install Homebrew
+        uses: Homebrew/actions/setup-homebrew@main
+
+      - name: Install swamp
+        run: brew install systeminit/tap/swamp
+
+      - name: Publish changed extensions
+        id: publish
+        timeout-minutes: 5
+        run: |
+          # ─────────────────────────────────────────────────────────────────
+          # Plain bash instead of `swamp workflow run publish` because
+          # `swamp workflow run` holds per-model locks for the whole run,
+          # which deadlocks any child `swamp extension push` call. Cribbed
+          # from hivemq/swamp-extensions .github/workflows/publish.yaml.
+          # Upstream tracking: https://swamp-club.com/lab/issues/296
+          # ─────────────────────────────────────────────────────────────────
+
+          set -o pipefail
+          exec > >(tee /tmp/publish-output.txt) 2>&1
+
+          if [ "${RUNNER_DEBUG:-}" = "1" ] || [ "${ACTIONS_STEP_DEBUG:-}" = "true" ]; then
+            LOG_FLAGS="--log-level trace --verbose --show-properties --no-color"
+            echo "::notice::GHA debug mode detected — using trace-level swamp logs"
+          else
+            LOG_FLAGS="--verbose --no-color"
+          fi
+
+          CHANNEL_FLAG=""
+          [ "$CHANNEL" = "beta" ] && CHANNEL_FLAG="--channel beta"
+          echo "Publishing to channel: ${CHANNEL}"
+
+          # CalVer with the GHA run number as the micro. Same shape the
+          # asdlc repo uses so operators reading `swamp extension list` see a
+          # familiar version string.
+          PUBLISH_VERSION="$(date -u +%Y.%m.%d).${{ github.run_number }}"
+
+          mkdir -p ~/.config/swamp
+          cat > ~/.config/swamp/auth.json <<EOF
+          {
+            "serverUrl": "https://swamp.club",
+            "apiKey": "${SWAMP_ACCESS_TOKEN}",
+            "apiKeyId": "ci",
+            "username": "bixu"
+          }
+          EOF
+          echo "Auth configured"
+
+          if ! swamp auth whoami --json; then
+            echo "FATAL: swamp auth whoami failed — credentials invalid or registry unreachable" >&2
+            exit 1
+          fi
+          echo "Auth verified"
+
+          CHANGED_FILES=$(git diff --name-only "$DIFF_BASE" -- extensions/drivers/ 2>/dev/null || echo "")
+
+          # First run on a fresh repo (or hand-triggered from the UI):
+          # diff-base is empty / --root, publish everything so the initial
+          # beta bundle lands.
+          if [ -z "$CHANGED_FILES" ] && [ "$CHANNEL" = "beta" ] && [ "$(git rev-list --count HEAD)" -lt 2 ]; then
+            echo "First commit on the branch — publishing all manifests"
+            CHANGED_FILES=$(find extensions/drivers -maxdepth 3 -name '*.manifest.yaml' -o -name '*.ts' -o -name '*.md' 2>/dev/null)
+          fi
+
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "No extension files changed — nothing to publish"
+            exit 0
+          fi
+
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
+
+          # Find which manifests own the changed files. Supported layouts:
+          #   extensions/drivers/<name>.manifest.yaml         (top-level)
+          #   extensions/drivers/<dir>/<name>.manifest.yaml   (nested + prefix)
+          #   extensions/drivers/<dir>/manifest.yaml          (nested bare)
+          MANIFESTS_TO_PUBLISH=""
+          for manifest in extensions/drivers/*.manifest.yaml extensions/drivers/*/*.manifest.yaml extensions/drivers/*/manifest.yaml; do
+            [ -f "$manifest" ] || continue
+
+            manifest_dir=$(dirname "$manifest")
+
+            DRIVER_FILES=$(awk '/^drivers:/{found=1; next} found && /^[[:space:]]*#/{next} found && /^[[:space:]]+-/{print} found && /^[^[:space:]]/{exit}' "$manifest" | sed 's/^[[:space:]]*-[[:space:]]*//' | tr -d ' ')
+            CHANGED=false
+
+            if echo "$CHANGED_FILES" | grep -qF "$manifest"; then
+              CHANGED=true
+            fi
+
+            for driver_file in $DRIVER_FILES; do
+              driver_path="${manifest_dir}/${driver_file}"
+              if echo "$CHANGED_FILES" | grep -qxF "$driver_path"; then
+                CHANGED=true
+              fi
+              # Helpers under a same-named subdir travel with the driver.
+              driver_base=$(echo "$driver_file" | sed 's/\.ts$//')
+              if ! echo "$driver_base" | grep -q '/'; then
+                subdir="${manifest_dir}/${driver_base}/"
+                if echo "$CHANGED_FILES" | grep -qF "$subdir"; then
+                  CHANGED=true
+                fi
+              fi
+            done
+
+            # `_lib/` is a shared helper dir under any manifest.
+            if echo "$CHANGED_FILES" | grep -qF "${manifest_dir}/_lib/"; then
+              CHANGED=true
+            fi
+
+            # additionalFiles paths are relative to the manifest directory.
+            ADDITIONAL_FILES=$(awk '/^additionalFiles:/{found=1; next} found && /^[[:space:]]*#/{next} found && /^[[:space:]]+-/{print} found && /^[^[:space:]]/{exit}' "$manifest" | sed 's/^[[:space:]]*-[[:space:]]*//' | tr -d ' ')
+            for add_file in $ADDITIONAL_FILES; do
+              add_path="${manifest_dir}/${add_file}"
+              if echo "$CHANGED_FILES" | grep -qxF "$add_path"; then
+                CHANGED=true
+              fi
+            done
+
+            if [ "$CHANGED" = "true" ]; then
+              MANIFESTS_TO_PUBLISH="$MANIFESTS_TO_PUBLISH $manifest"
+            fi
+          done
+
+          if [ -z "$MANIFESTS_TO_PUBLISH" ]; then
+            echo "Changed files detected but no matching manifests — nothing to publish"
+            exit 0
+          fi
+
+          FAIL=0
+          for manifest in $MANIFESTS_TO_PUBLISH; do
+            NAME=$(grep '^name:' "$manifest" | awk '{print $2}' | tr -d '"')
+            echo "Publishing ${NAME}@${PUBLISH_VERSION} to ${CHANNEL}"
+            sed -i "s/^version: .*/version: \"${PUBLISH_VERSION}\"/" "$manifest"
+            if swamp extension push "$manifest" -y $CHANNEL_FLAG $LOG_FLAGS; then
+              echo "OK: ${NAME}"
+            else
+              echo "FAIL: ${NAME}"
+              FAIL=1
+            fi
+          done
+          exit $FAIL
+
+      - name: Publish summary
+        if: always()
+        run: |
+          {
+            echo "# Publish Run"
+            echo
+            echo "Channel: **${CHANNEL}** (${{ github.event_name }})"
+            echo
+            case "${{ steps.publish.outcome }}" in
+              success)   echo "Status: **succeeded**" ;;
+              failure)   echo "Status: **failed**" ;;
+              cancelled) echo "Status: **cancelled / timed out**" ;;
+              *)         echo "Status: **${{ steps.publish.outcome }}**" ;;
+            esac
+            echo
+            echo "Commit: \`${{ github.sha }}\`"
+            echo
+            if [ -f /tmp/publish-output.txt ]; then
+              echo "## Publish output (last 80 lines)"
+              echo
+              echo '```'
+              tail -n 80 /tmp/publish-output.txt
+              echo '```'
+            else
+              echo "_(no captured output)_"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "${{ steps.publish.outcome }}" != "success" ]; then
+            echo "::error::Publish failed (outcome: ${{ steps.publish.outcome }}) — see Step Summary."
+          fi
