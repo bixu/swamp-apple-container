@@ -8,10 +8,10 @@
  */
 
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { driver } from "./apple_container.ts";
+import { driver } from "./container.ts";
 
 Deno.test("driver export: type/name/description/configSchema/createDriver are present", () => {
-  assertEquals(driver.type, "@bixu/apple-container");
+  assertEquals(driver.type, "@bixu/container");
   assert(typeof driver.name === "string" && driver.name.length > 0);
   assert(typeof driver.description === "string" && driver.description.length > 0);
   assert(typeof driver.configSchema.parse === "function");
@@ -35,7 +35,7 @@ Deno.test("createDriver rejects invalid config (empty image)", () => {
 
 Deno.test("createDriver returns an object with an execute method", () => {
   const d = driver.createDriver({ image: "docker.io/library/alpine:latest" });
-  assertEquals(d.type, "@bixu/apple-container");
+  assertEquals(d.type, "@bixu/container");
   assert(typeof d.execute === "function");
   assert(typeof d.initialize === "function");
 });

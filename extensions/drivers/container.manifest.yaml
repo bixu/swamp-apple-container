@@ -1,5 +1,5 @@
 manifestVersion: 1
-name: "@bixu/apple-container"
+name: "@bixu/container"
 version: 0.0.0
 # CI overwrites `version:` at publish time via `sed` in .github/workflows/publish.yaml.
 # `0.0.0` is a well-known sentinel that makes bad `swamp extension push` calls
@@ -21,7 +21,7 @@ description: >
   or LLM-driven workloads. Two modes, matching swamp's built-in `docker`
   driver: bundle mode (self-contained JS bundle in a Deno-capable image)
   and command mode (`sh -c "<run>"` inside the image). Opt in via
-  `defaultDriver: "@bixu/apple-container"` in `.swamp.yaml`, or per
+  `defaultDriver: "@bixu/container"` in `.swamp.yaml`, or per
   workflow/job/step/model. Requires `/usr/local/bin/container` (Apple's
   container CLI 1.0+).
 
@@ -39,7 +39,7 @@ labels:
   - isolation
 
 drivers:
-  - apple_container.ts
+  - container.ts
 
 additionalFiles:
-  - apple_container.README.md
+  - container.README.md

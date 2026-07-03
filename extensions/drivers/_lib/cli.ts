@@ -105,7 +105,7 @@ export function buildPullArgs(image: string): string[] {
 export function assertRuntimeAvailable(): void {
   if (Deno.build.os !== "darwin") {
     throw new Error(
-      `@bixu/apple-container driver requires macOS (found: ${Deno.build.os}).`,
+      `@bixu/container driver requires macOS (found: ${Deno.build.os}).`,
     );
   }
 }

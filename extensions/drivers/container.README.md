@@ -1,4 +1,4 @@
-# @bixu/apple-container
+# @bixu/container
 
 Swamp execution driver that routes every model method through Apple's `container` CLI (macOS 15+). Each execution runs in its own Virtualization-framework microVM — a stronger isolation boundary than Docker's shared-kernel containers.
 
@@ -19,7 +19,7 @@ For workflows that run untrusted or LLM-generated code, this is a real security 
 ## Install
 
 ```
-swamp extension pull @bixu/apple-container --channel beta
+swamp extension pull @bixu/container --channel beta
 ```
 
 ## Opt in
@@ -27,7 +27,7 @@ swamp extension pull @bixu/apple-container --channel beta
 The driver replaces the default `raw` in-process driver for whatever scope you point it at. Set it repo-wide in `.swamp.yaml`:
 
 ```yaml
-defaultDriver: "@bixu/apple-container"
+defaultDriver: "@bixu/container"
 defaultDriverConfig:
   image: docker.io/library/alpine:latest
   bundleImage: docker.io/denoland/deno:alpine
@@ -44,7 +44,7 @@ Or per-workflow, per-job, per-step, per-model — same resolution chain the buil
 Override for a single run:
 
 ```
-swamp workflow run my-workflow --driver "@bixu/apple-container"
+swamp workflow run my-workflow --driver "@bixu/container"
 ```
 
 ## Config schema

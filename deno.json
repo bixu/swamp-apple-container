@@ -13,6 +13,6 @@
   },
   "tasks": {
     "test": "deno test --allow-read --allow-write --allow-run --allow-env extensions/drivers/",
-    "smoke": "SWAMP_APPLE_CONTAINER_SMOKE=1 deno test --allow-all extensions/drivers/apple_container_test.ts"
+    "smoke": "SWAMP_APPLE_CONTAINER_SMOKE=1 deno test --allow-all extensions/drivers/container_test.ts"
   }
 }

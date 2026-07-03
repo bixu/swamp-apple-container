@@ -1,6 +1,6 @@
 # swamp-apple-container
 
-Swamp extension repository providing [`@bixu/apple-container`](extensions/drivers/apple_container.README.md) — a swamp execution driver that runs each model method inside its own macOS Virtualization-framework microVM via Apple's `container` CLI.
+Swamp extension repository providing [`@bixu/container`](extensions/drivers/container.README.md) — a swamp execution driver that runs each model method inside its own macOS Virtualization-framework microVM via Apple's `container` CLI.
 
 ## Why
 
@@ -9,13 +9,13 @@ Docker on macOS shares one Linux kernel across every container. Apple's `contain
 ## Install
 
 ```
-swamp extension pull @bixu/apple-container --channel beta
+swamp extension pull @bixu/container --channel beta
 ```
 
 Then opt in via `.swamp.yaml` or per workflow/job/step/model:
 
 ```yaml
-defaultDriver: "@bixu/apple-container"
+defaultDriver: "@bixu/container"
 defaultDriverConfig:
   image: docker.io/library/alpine:latest
   bundleImage: docker.io/denoland/deno:alpine
@@ -26,7 +26,7 @@ defaultDriverConfig:
   gid: 1000
 ```
 
-Full reference: [`extensions/drivers/apple_container.README.md`](extensions/drivers/apple_container.README.md).
+Full reference: [`extensions/drivers/container.README.md`](extensions/drivers/container.README.md).
 
 ## Requirements
 
@@ -38,10 +38,10 @@ Full reference: [`extensions/drivers/apple_container.README.md`](extensions/driv
 
 ```
 extensions/drivers/
-  apple_container.ts              — driver body
-  apple_container_test.ts         — driver-level tests + smoke-test scaffold
-  apple_container.manifest.yaml   — extension manifest
-  apple_container.README.md       — user-facing docs
+  container.ts              — driver body
+  container_test.ts         — driver-level tests + smoke-test scaffold
+  container.manifest.yaml   — extension manifest
+  container.README.md       — user-facing docs
   _lib/
     cli.ts                        — pure flag-translation helpers
     cli_test.ts                   — unit tests, run everywhere
@@ -55,7 +55,7 @@ deno lint extensions/
 deno test --allow-read --allow-write --allow-run --allow-env extensions/drivers/
 
 # macOS smoke test — needs Apple's container CLI + macOS 15+
-SWAMP_APPLE_CONTAINER_SMOKE=1 deno test --allow-all extensions/drivers/apple_container_test.ts
+SWAMP_APPLE_CONTAINER_SMOKE=1 deno test --allow-all extensions/drivers/container_test.ts
 ```
 
 ## Publishing

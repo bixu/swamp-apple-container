@@ -1,5 +1,5 @@
 /**
- * # @bixu/apple-container
+ * # @bixu/container
  *
  * Swamp execution driver that routes every model method through Apple's
  * `container` CLI (macOS 15+). Each execution runs inside its own
@@ -17,7 +17,7 @@
  *   runs `sh -c "<command>"` inside the container. Stdout becomes the
  *   `stdout` resource; stderr streams as real-time logs.
  *
- * Set `defaultDriver: "@bixu/apple-container"` in `.swamp.yaml` (or on a
+ * Set `defaultDriver: "@bixu/container"` in `.swamp.yaml` (or on a
  * workflow / job / step / model) to opt in. See the README for a full
  * example.
  *
@@ -150,7 +150,7 @@ const SIGKILL_GRACE_MS = 5_000;
  * Virtualization-framework microVMs via Apple's `container` CLI.
  */
 class AppleContainerExecutionDriver implements ExecutionDriver {
-  readonly type = "@bixu/apple-container";
+  readonly type = "@bixu/container";
   private readonly config: AppleContainerDriverConfig;
 
   constructor(rawConfig: Record<string, unknown>) {
@@ -188,8 +188,7 @@ class AppleContainerExecutionDriver implements ExecutionDriver {
     if (hasRun) return this.executeCommand(request, callbacks);
     return Promise.resolve({
       status: "error",
-      error:
-        "@bixu/apple-container driver requires either a bundle or a 'run' string in methodArgs",
+      error: "@bixu/container driver requires either a bundle or a 'run' string in methodArgs",
       outputs: [],
       logs: [],
       durationMs: 0,
@@ -445,7 +444,7 @@ async function streamLines(
  * and registers the driver type against the extension's model catalog.
  */
 export const driver = {
-  type: "@bixu/apple-container",
+  type: "@bixu/container",
   name: "Apple container (macOS)",
   description:
     "Executes model methods in macOS Virtualization-framework microVMs via Apple's `container` CLI. Each method runs in a fresh, isolated microVM — a stronger isolation boundary than Docker's shared-kernel containers.",
